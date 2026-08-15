@@ -122,6 +122,7 @@
     <textarea class="default-desc" id="defaultDesc" placeholder="Descripción por defecto para todas (opcional)"></textarea>
     <div class="toolbar">
       <button class="secondary" id="applyDefaultBtn">Aplicar descripción a todas</button>
+      <button id="shareAllBtn">Compartir todas a Estado</button>
       <button id="exportBtn">Descargar ZIP (carpeta de hoy)</button>
       <button class="ghost" id="editCropBtn">Editar recorte</button>
       <button class="ghost" id="clearAllBtn">Empezar de nuevo</button>
@@ -146,6 +147,7 @@ const resetCropBtn = document.getElementById('resetCropBtn');
 const resultsCard = document.getElementById('resultsCard');
 const grid = document.getElementById('grid');
 const exportBtn = document.getElementById('exportBtn');
+const shareAllBtn = document.getElementById('shareAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const editCropBtn = document.getElementById('editCropBtn');
 const defaultDesc = document.getElementById('defaultDesc');
@@ -405,6 +407,19 @@ function renderGrid(){
 applyDefaultBtn.addEventListener('click', () => {
   results.forEach(r => { r.desc = defaultDesc.value; });
   renderGrid();
+});
+
+shareAllBtn.addEventListener('click', async () => {
+  if(!results.length){ alert('No hay nada para compartir todavía.'); return; }
+  try{
+    const files = results.map(r => new File([r.blob], r.name, {type:'image/jpeg'}));
+    if(navigator.canShare && !navigator.canShare({files})){
+      throw new Error('el celular no soporta compartir varias fotos juntas');
+    }
+    await navigator.share({files});
+  }catch(err){
+    alert('No se pudieron compartir todas juntas. Probá compartirlas una por una con el botón "Compartir" de cada foto, o descargá el ZIP.');
+  }
 });
 
 // ---------- Export ----------
