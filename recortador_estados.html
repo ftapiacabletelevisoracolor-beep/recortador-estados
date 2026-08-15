@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recortador de Estados</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg: #f2ede6;
+    --panel: #ffffff;
+    --ink: #2b2420;
+    --ink-soft: #6b5f54;
+    --accent: #7a2e3a;
+    --accent-soft: #f6dfe0;
+    --gold: #b8863f;
+    --line: #e2d8cb;
+    --ok: #3f7a52;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    padding:24px 16px 80px;
+  }
+  h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-0.01em;}
+  .sub{color:var(--ink-soft);font-size:0.92rem;margin:0 0 24px;}
+  .container{max-width:920px;margin:0 auto;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:20px;}
+  .card h2{font-size:1rem;margin:0 0 12px;color:var(--accent);display:flex;align-items:center;gap:8px;}
+  .step-num{background:var(--accent);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.78rem;flex-shrink:0;}
+  .dropzone{border:2px dashed var(--line);border-radius:10px;padding:32px 16px;text-align:center;cursor:pointer;color:var(--ink-soft);transition:.15s;}
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+  input[type=file]{display:none;}
+  button{font-family:inherit;border:none;border-radius:8px;padding:10px 16px;font-size:0.88rem;cursor:pointer;background:var(--accent);color:#fff;transition:.15s;}
+  button:hover{opacity:.9;}
+  button.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+  button.ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--line);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .cropper-wrap{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;}
+  .cropper-stage{position:relative;display:inline-block;max-width:100%;touch-action:none;user-select:none;background:#111;border-radius:8px;overflow:hidden;}
+  .cropper-stage img{display:block;max-width:400px;width:100%;height:auto;}
+  .crop-box{position:absolute;border:2px solid var(--gold);background:rgba(184,134,63,0.15);box-shadow:0 0 0 2000px rgba(0,0,0,0.45);cursor:move;}
+  .handle{position:absolute;width:16px;height:16px;background:var(--gold);border:2px solid #fff;border-radius:50%;}
+  .handle.br{right:-9px;bottom:-9px;cursor:nwse-resize;}
+  .crop-info{font-size:0.82rem;color:var(--ink-soft);min-width:200px;}
+  .crop-info p{margin:4px 0;}
+  .crop-info b{color:var(--ink);}
+  .tag{display:inline-block;font-size:0.72rem;padding:2px 8px;border-radius:20px;margin-left:6px;}
+  .tag.ok{background:var(--ok);color:#fff;}
+  .tag.warn{background:var(--gold);color:#fff;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(200px,1fr));gap:16px;}
+  .thumb{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fafafa;}
+  .thumb img{width:100%;display:block;aspect-ratio:1/1;object-fit:contain;background:#eee;}
+  .thumb .body{padding:10px;}
+  .thumb textarea{width:100%;font-family:inherit;font-size:0.82rem;border:1px solid var(--line);border-radius:6px;padding:6px;resize:vertical;min-height:50px;}
+  .thumb .row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .thumb .row button{flex:1;font-size:0.72rem;padding:6px 4px;min-width:70px;}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .default-desc{width:100%;font-family:inherit;font-size:0.85rem;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;}
+  .hint{font-size:0.78rem;color:var(--ink-soft);margin-top:6px;}
+  .progress{font-size:0.78rem;color:var(--gold);}
+  .status-line{font-size:0.85rem;color:var(--ink-soft);margin-bottom:14px;}
+  .config-box{background:#faf6f0;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px;}
+  .config-box input{width:100%;font-family:inherit;font-size:0.82rem;padding:8px;border:1px solid var(--line);border-radius:6px;margin-top:6px;}
+  details summary{cursor:pointer;color:var(--ink-soft);font-size:0.82rem;}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Recortador de Estados</h1>
+  <p class="sub">Subí las capturas, se recortan solas (recorte compartido entre los dos celulares) y exportás listo para subir.</p>
+
+  <div class="card">
+    <details id="configDetails">
+      <summary>⚙️ Configuración del recorte compartido (una sola vez)</summary>
+      <div class="config-box">
+        <p class="hint">Pegá acá la URL de tu Apps Script (la misma para vos y para tu pareja) para que el recorte se sincronice entre los dos celulares automáticamente. Si la dejás vacía, cada celular guarda su propio recorte por separado.</p>
+        <input type="text" id="configUrlInput" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+        <div class="toolbar" style="margin-top:10px;">
+          <button class="secondary" id="saveConfigUrlBtn">Guardar URL</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">1</span> Subir capturas</h2>
+    <p class="status-line" id="statusLine">Revisando si hay un recorte guardado...</p>
+    <div class="dropzone" id="dropzone">
+      Arrastrá las capturas acá o tocá para elegir<br>
+      <span class="hint">Podés subir varias a la vez</span>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+  </div>
+
+  <div class="card" id="cropCard" style="display:none;">
+    <h2><span class="step-num">2</span> Ajustar recorte <span id="savedTag"></span></h2>
+    <div class="cropper-wrap">
+      <div class="cropper-stage" id="stage">
+        <img id="cropImg" src="">
+        <div class="crop-box" id="cropBox">
+          <div class="handle br" id="handleBR"></div>
+        </div>
+      </div>
+      <div class="crop-info">
+        <p>Arrastrá el recuadro para moverlo y el punto dorado de la esquina para agrandarlo/achicarlo.</p>
+        <p>Se guarda para vos <b>y para tu pareja</b> si configuraste la URL compartida arriba.</p>
+        <div class="toolbar" style="margin-top:14px;">
+          <button id="applyBtn">Guardar y aplicar a todas</button>
+          <button class="ghost" id="resetCropBtn">Reiniciar recorte</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none;">
+    <h2><span class="step-num">3</span> Descripciones y exportar</h2>
+    <textarea class="default-desc" id="defaultDesc" placeholder="Descripción por defecto para todas (opcional)"></textarea>
+    <div class="toolbar">
+      <button class="secondary" id="applyDefaultBtn">Aplicar descripción a todas</button>
+      <button id="exportBtn">Descargar ZIP (carpeta de hoy)</button>
+      <button class="ghost" id="editCropBtn">Editar recorte</button>
+      <button class="ghost" id="clearAllBtn">Empezar de nuevo</button>
+    </div>
+    <span class="progress" id="progressMsg"></span>
+    <div class="grid" id="grid"></div>
+  </div>
+
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const cropCard = document.getElementById('cropCard');
+const stage = document.getElementById('stage');
+const cropImg = document.getElementById('cropImg');
+const cropBox = document.getElementById('cropBox');
+const handleBR = document.getElementById('handleBR');
+const savedTag = document.getElementById('savedTag');
+const applyBtn = document.getElementById('applyBtn');
+const resetCropBtn = document.getElementById('resetCropBtn');
+const resultsCard = document.getElementById('resultsCard');
+const grid = document.getElementById('grid');
+const exportBtn = document.getElementById('exportBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const editCropBtn = document.getElementById('editCropBtn');
+const defaultDesc = document.getElementById('defaultDesc');
+const applyDefaultBtn = document.getElementById('applyDefaultBtn');
+const progressMsg = document.getElementById('progressMsg');
+const statusLine = document.getElementById('statusLine');
+const configUrlInput = document.getElementById('configUrlInput');
+const saveConfigUrlBtn = document.getElementById('saveConfigUrlBtn');
+const configDetails = document.getElementById('configDetails');
+
+let uploadedFiles = [];
+let cropFraction = null;
+let results = [];
+let refDims = null;
+let CONFIG_URL = localStorage.getItem('recortadorConfigUrl') || '';
+
+configUrlInput.value = CONFIG_URL;
+if(CONFIG_URL) configDetails.removeAttribute('open');
+
+saveConfigUrlBtn.addEventListener('click', () => {
+  CONFIG_URL = configUrlInput.value.trim();
+  localStorage.setItem('recortadorConfigUrl', CONFIG_URL);
+  statusLine.textContent = CONFIG_URL ? 'URL compartida guardada. Ahora subí capturas.' : 'Sin URL compartida: el recorte queda solo en este celular.';
+});
+
+// ---------- Upload handling ----------
+dropzone.addEventListener('click', () => fileInput.click());
+['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(fileList){
+  const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  if(!files.length) return;
+  uploadedFiles = [];
+  results = [];
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        uploadedFiles.push({file, dataUrl: e.target.result, naturalW: img.naturalWidth, naturalH: img.naturalHeight});
+        loaded++;
+        if(loaded === files.length) onAllLoaded();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onAllLoaded(){
+  const first = uploadedFiles[0];
+  refDims = {w: first.naturalW, h: first.naturalH};
+
+  statusLine.textContent = 'Buscando recorte guardado...';
+  let saved = null;
+  let source = null;
+  if(CONFIG_URL){
+    saved = await fetchRemoteCrop(refDims);
+    if(saved) source = 'compartido';
+  }
+  if(!saved){
+    saved = loadLocalCrop(refDims);
+    if(saved) source = 'este celular';
+  }
+
+  if(saved){
+    cropFraction = saved;
+    statusLine.textContent = 'Recorte encontrado (' + source + '). Recortando automáticamente...';
+    applyCropToAll();
+  } else {
+    statusLine.textContent = 'Primera vez con esta resolución: ajustá el recorte una vez.';
+    cropFraction = {x:0.1,y:0.3,w:0.8,h:0.4};
+    openCropEditor();
+  }
+}
+
+function openCropEditor(){
+  cropCard.style.display = 'block';
+  cropImg.src = uploadedFiles[0].dataUrl;
+  cropImg.onload = () => { drawCropBox(); };
+  savedTag.innerHTML = '';
+  cropCard.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+editCropBtn.addEventListener('click', openCropEditor);
+
+// ---------- Crop box drag/resize ----------
+function drawCropBox(){
+  const rect = stage.getBoundingClientRect();
+  cropBox.style.left = (cropFraction.x * rect.width) + 'px';
+  cropBox.style.top = (cropFraction.y * rect.height) + 'px';
+  cropBox.style.width = (cropFraction.w * rect.width) + 'px';
+  cropBox.style.height = (cropFraction.h * rect.height) + 'px';
+}
+
+let dragMode = null;
+let dragStart = null;
+
+cropBox.addEventListener('pointerdown', e => {
+  dragMode = (e.target === handleBR) ? 'resize' : 'move';
+  dragStart = { x: e.clientX, y: e.clientY, frac: {...cropFraction} };
+  e.preventDefault();
+});
+window.addEventListener('pointermove', e => {
+  if(!dragMode) return;
+  const rect = stage.getBoundingClientRect();
+  const dx = (e.clientX - dragStart.x) / rect.width;
+  const dy = (e.clientY - dragStart.y) / rect.height;
+  if(dragMode === 'move'){
+    let x = Math.max(0, Math.min(1 - dragStart.frac.w, dragStart.frac.x + dx));
+    let y = Math.max(0, Math.min(1 - dragStart.frac.h, dragStart.frac.y + dy));
+    cropFraction = {...dragStart.frac, x, y};
+  } else {
+    let w = Math.max(0.05, Math.min(1 - dragStart.frac.x, dragStart.frac.w + dx));
+    let h = Math.max(0.05, Math.min(1 - dragStart.frac.y, dragStart.frac.h + dy));
+    cropFraction = {...dragStart.frac, w, h};
+  }
+  drawCropBox();
+});
+window.addEventListener('pointerup', () => { dragMode = null; });
+
+resetCropBtn.addEventListener('click', () => {
+  cropFraction = {x:0.1,y:0.3,w:0.8,h:0.4};
+  drawCropBox();
+});
+
+// ---------- Local storage ----------
+function saveLocalCrop(dims, frac){
+  localStorage.setItem('cropRect_' + dims.w + 'x' + dims.h, JSON.stringify(frac));
+}
+function loadLocalCrop(dims){
+  const raw = localStorage.getItem('cropRect_' + dims.w + 'x' + dims.h);
+  return raw ? JSON.parse(raw) : null;
+}
+
+// ---------- Remote (Apps Script) storage ----------
+async function fetchRemoteCrop(dims){
+  try{
+    const res = await fetch(CONFIG_URL + '?key=crop_' + dims.w + 'x' + dims.h);
+    const text = await res.text();
+    const data = JSON.parse(text);
+    if(data && data.w) return data;
+  }catch(e){ console.warn('sin recorte remoto', e); }
+  return null;
+}
+async function saveRemoteCrop(dims, frac){
+  try{
+    await fetch(CONFIG_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain'},
+      body: JSON.stringify({key: 'crop_' + dims.w + 'x' + dims.h, value: frac})
+    });
+  }catch(e){ console.warn('no se pudo guardar recorte remoto', e); }
+}
+
+// ---------- Apply crop ----------
+applyBtn.addEventListener('click', async () => {
+  saveLocalCrop(refDims, cropFraction);
+  if(CONFIG_URL){
+    statusLine.textContent = 'Guardando recorte compartido...';
+    await saveRemoteCrop(refDims, cropFraction);
+  }
+  cropCard.style.display = 'none';
+  applyCropToAll();
+});
+
+function applyCropToAll(){
+  results = [];
+  grid.innerHTML = '';
+  let done = 0;
+  uploadedFiles.forEach((item, idx) => {
+    const canvas = document.createElement('canvas');
+    const cx = Math.round(cropFraction.x * item.naturalW);
+    const cy = Math.round(cropFraction.y * item.naturalH);
+    const cw = Math.round(cropFraction.w * item.naturalW);
+    const ch = Math.round(cropFraction.h * item.naturalH);
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const name = 'prenda_' + String(idx+1).padStart(2,'0') + '.jpg';
+        results.push({name, blob, url, desc: '', origDataUrl: item.dataUrl});
+        done++;
+        if(done === uploadedFiles.length){
+          statusLine.textContent = 'Listo: ' + uploadedFiles.length + ' foto(s) recortada(s).';
+          renderGrid();
+        }
+      }, 'image/jpeg', 0.9);
+    };
+    img.src = item.dataUrl;
+  });
+  resultsCard.style.display = 'block';
+  resultsCard.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function renderGrid(){
+  grid.innerHTML = '';
+  results.sort((a,b) => a.name.localeCompare(b.name));
+  const canShare = !!(navigator.share);
+  results.forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'thumb';
+    div.innerHTML = `
+      <img src="${r.url}">
+      <div class="body">
+        <textarea placeholder="Descripción...">${r.desc}</textarea>
+        <div class="row">
+          <button class="secondary ocr-btn">Extraer texto</button>
+          ${canShare ? '<button class="share-btn">Compartir</button>' : ''}
+          <button class="ghost del-btn">Quitar</button>
+        </div>
+      </div>
+    `;
+    const textarea = div.querySelector('textarea');
+    textarea.addEventListener('input', () => { r.desc = textarea.value; });
+    div.querySelector('.ocr-btn').addEventListener('click', async (e) => {
+      e.target.textContent = 'Leyendo...';
+      e.target.disabled = true;
+      try{
+        const { data: { text } } = await Tesseract.recognize(r.origDataUrl, 'spa');
+        textarea.value = text.trim();
+        r.desc = textarea.value;
+      } catch(err){ alert('No se pudo leer el texto de esta imagen.'); }
+      e.target.textContent = 'Extraer texto';
+      e.target.disabled = false;
+    });
+    const shareBtnEl = div.querySelector('.share-btn');
+    if(shareBtnEl){
+      shareBtnEl.addEventListener('click', async () => {
+        try{
+          const file = new File([r.blob], r.name, {type:'image/jpeg'});
+          if(navigator.canShare && !navigator.canShare({files:[file]})){
+            throw new Error('no soportado');
+          }
+          await navigator.share({files:[file], text: r.desc || ''});
+        }catch(err){
+          const a = document.createElement('a');
+          a.href = r.url; a.download = r.name; a.click();
+        }
+      });
+    }
+    div.querySelector('.del-btn').addEventListener('click', () => {
+      results.splice(i, 1);
+      renderGrid();
+    });
+    grid.appendChild(div);
+  });
+}
+
+applyDefaultBtn.addEventListener('click', () => {
+  results.forEach(r => { r.desc = defaultDesc.value; });
+  renderGrid();
+});
+
+// ---------- Export ----------
+exportBtn.addEventListener('click', async () => {
+  if(!results.length){ alert('No hay nada para exportar todavía.'); return; }
+  progressMsg.textContent = 'Generando ZIP...';
+  const today = new Date().toISOString().slice(0,10);
+  const zip = new JSZip();
+  const folder = zip.folder(today);
+  let descLines = [];
+  for(const r of results){
+    folder.file(r.name, r.blob);
+    descLines.push(r.name + ': ' + (r.desc || '(sin descripción)'));
+  }
+  folder.file('descripciones.txt', descLines.join('\n'));
+  const content = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'prendas_' + today + '.zip';
+  a.click();
+  progressMsg.textContent = 'Listo.';
+  setTimeout(() => progressMsg.textContent = '', 2000);
+});
+
+clearAllBtn.addEventListener('click', () => {
+  uploadedFiles = [];
+  results = [];
+  grid.innerHTML = '';
+  cropCard.style.display = 'none';
+  resultsCard.style.display = 'none';
+  fileInput.value = '';
+  defaultDesc.value = '';
+  statusLine.textContent = 'Subí capturas para empezar de nuevo.';
+});
+
+window.addEventListener('resize', () => { if(cropFraction && cropCard.style.display !== 'none') drawCropBox(); });
+
+statusLine.textContent = CONFIG_URL ? 'Recorte compartido activado. Subí capturas.' : 'Subí capturas para empezar (configurá la URL compartida arriba si quieren sincronizar entre los dos).';
+</script>
+</body>
+</html>
